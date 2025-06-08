@@ -29,7 +29,6 @@
 (define-map product-states
   { state-id: uint }
   { state-name: (string-utf8 50) }
-)
 
 ;; Supply Chain Entities (Companies/Organizations)
 (define-map entities
@@ -267,19 +266,19 @@
     
     ;; Check if principal is already registered
     (asserts! (is-none (map-get? entity-principals { principal: entity-principal })) (err ERR-ALREADY-EXISTS))
- ;; Register entity
-    (map-set entities
-      { entity-id: entity-id }
-      {
-        name: name,
-        entity-type: entity-type,
-        location: (get location entity-type),
-        contact-info: contact-info,
-        verification-status: false,
-        sustainability-score: u0,
-        created-at: block-height
-      }
-    )
+;; Register entity
+(map-set entities
+  { entity-id: entity-id }
+  {
+    name: name,
+    entity-type: entity-type,
+    location: location,
+    contact-info: contact-info,
+    verification-status: false,
+    sustainability-score: u0,
+    created-at: block-height
+  }
+)
     
     ;; Associate principal with entity
     (map-set entity-principals
