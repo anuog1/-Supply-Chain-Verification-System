@@ -92,18 +92,6 @@
     is-revoked: bool,
     issued-at: uint
   }
-
-  {
-    cert-type-id: uint,
-    issuer-entity-id: uint,
-    recipient-entity-id: (optional uint),
-    product-id: (optional uint),
-    valid-from: uint,
-    valid-until: uint,
-    verification-uri: (string-utf8 256),
-    is-active: bool,
-    created-at: uint
-  }
 )
 
 ;; Custody Transfer History
@@ -159,3 +147,42 @@
   }
 )
 
+;; Initialize contract with basic entity types, product states, and certification types
+(begin
+  ;; Entity Types
+  (map-set entity-types { type-id: u1 } { type-name: "Producer" })
+  (map-set entity-types { type-id: u2 } { type-name: "Manufacturer" })
+  (map-set entity-types { type-id: u3 } { type-name: "Distributor" })
+  (map-set entity-types { type-id: u4 } { type-name: "Retailer" })
+  (map-set entity-types { type-id: u5 } { type-name: "Certification Authority" })
+  
+  ;; Product States
+  (map-set product-states { state-id: u1 } { state-name: "Origin Certified" })
+  (map-set product-states { state-id: u2 } { state-name: "In Production" })
+  (map-set product-states { state-id: u3 } { state-name: "Quality Control" })
+  (map-set product-states { state-id: u4 } { state-name: "In Transit" })
+  (map-set product-states { state-id: u5 } { state-name: "At Distributor" })
+  (map-set product-states { state-id: u6 } { state-name: "At Retailer" })
+  (map-set product-states { state-id: u7 } { state-name: "Sold" })
+  
+  ;; Certification Types
+  (map-set certification-types { cert-type-id: u1 } { cert-type-name: "Organic" })
+  (map-set certification-types { cert-type-id: u2 } { cert-type-name: "Fair Trade" })
+  (map-set certification-types { cert-type-id: u3 } { cert-type-name: "Sustainably Sourced" })
+  (map-set certification-types { cert-type-id: u4 } { cert-type-name: "Non-GMO" })
+  (map-set certification-types { cert-type-id: u5 } { cert-type-name: "Carbon Neutral" })
+)
+
+;; Helper function to check if caller is authorized as an entity
+(define-read-only (is-entity-principal (entity-id uint))
+  (match (map-get? entity-principals { principal: tx-sender })
+    entity-info (is-eq (get entity-id entity-info) entity-id)
+    false
+  )
+)
+
+;; Helper function to get entity ID from principal
+(define-read-only (get-entity-id-by-principal (entity-principal principal))
+  (match (map-get? entity-principals { principal: entity-principal })
+    entity-info (ok (get entity-id entity-info))
+    (err ERR-ENTITY-NOT-FOUND)
