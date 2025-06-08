@@ -24,7 +24,6 @@
 (define-map entity-types
   { type-id: uint }
   { type-name: (string-utf8 50) }
-)
 
 ;; Product States
 (define-map product-states
@@ -462,21 +461,20 @@
         (ok certificate-id)
       )
     )
-     )
-          ;; Update product certificate index
-          (map-set product-certificates
-            { product-id: product-id-value, index: u0 }
-            { certificate-id: certificate-id }
-          )
+    ;; Update product certificate index
+    (if (is-some product-id)
+      (let (
+        (product-id-value (unwrap! product-id (err ERR-PRODUCT-NOT-FOUND)))
+      )
+        (map-set product-certificates
+          { product-id: product-id-value, index: u0 }
+          { certificate-id: certificate-id }
         )
-        true
       )
       true
     )
-    
     ;; Increment certificate ID
     (var-set next-certificate-id (+ certificate-id u1))
-    
     (ok certificate-id)
   )
 )
