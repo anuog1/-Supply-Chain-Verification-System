@@ -186,3 +186,43 @@
   (match (map-get? entity-principals { principal: entity-principal })
     entity-info (ok (get entity-id entity-info))
     (err ERR-ENTITY-NOT-FOUND)
+
+  )
+)
+
+;; Read-only functions
+(define-read-only (get-product-details (product-id uint))
+  (map-get? products { product-id: product-id })
+)
+
+(define-read-only (get-entity-details (entity-id uint))
+  (map-get? entities { entity-id: entity-id })
+)
+
+(define-read-only (get-certificate-details (certificate-id uint))
+  (map-get? certificates { certificate-id: certificate-id })
+)
+
+(define-read-only (get-checkpoint-details (checkpoint-id uint))
+  (map-get? checkpoints { checkpoint-id: checkpoint-id })
+)
+
+(define-read-only (get-product-certification-status (product-id uint))
+  (match (map-get? products { product-id: product-id })
+    product (ok {
+      is-verified: (get is-verified product),
+      origin-certification: (get-certificate-details (get origin-certification-id product)),
+      sustainability-score: (get sustainability-score product)
+    })
+    (err ERR-PRODUCT-NOT-FOUND)
+  )
+)
+
+(define-read-only (get-product-journey (product-id uint))
+  ;; In a real implementation, would return a comprehensive journey history
+  ;; including all checkpoints and custody transfers
+  (match (map-get? products { product-id: product-id })
+    product (ok {
+      product-id: product-id,
+      current-state: (get current-state product),
+      current-custodian: (get current-custodian product)
