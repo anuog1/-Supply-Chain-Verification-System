@@ -511,3 +511,56 @@
         transfer-timestamp: block-height,
         notes: notes,
         verification-signature: verification-signature
+
+           }
+    )
+    
+    ;; Determine new state based on entity type
+    (let
+      (
+        (new-state 
+          (match (get entity-type to-entity)
+            entity-type-value
+            (cond
+              ((is-eq entity-type-value u2) u2) ;; Manufacturer -> In Production
+              ((is-eq entity-type-value u3) u5) ;; Distributor -> At Distributor
+              ((is-eq entity-type-value u4) u6) ;; Retailer -> At Retailer
+              (true (get current-state product)) ;; Default: keep current state
+            )
+            (get current-state product)
+          )
+        )
+      )
+      
+      ;; Update product's custodian and state
+      (map-set products
+        { product-id: product-id }
+        (merge product { 
+          current-custodian: to-entity-id,
+          current-state: new-state
+        })
+      )
+    )
+    
+    (ok true)
+  )
+)
+
+(define-public (record-checkpoint
+  (product-id uint)
+  (checkpoint-type (string-utf8 50))
+  (location (string-utf8 100))
+  (quality-score uint)
+  (sustainability-score uint)
+  (ethical-score uint)
+  (notes (string-utf8 500))
+  (evidence-uri (string-utf8 256))
+  (verification-signature (buff 65))
+)
+  (let
+    (
+      (checkpoint-id (var-get next-checkpoint-id))
+      (product (unwrap! (get-product-details product-id) (err ERR-PRODUCT-NOT-FOUND)))
+      (entity-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
+      (checkpoint-index u0) ;; Use a counter in real implementation
+    )
