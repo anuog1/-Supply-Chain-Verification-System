@@ -129,3 +129,33 @@
     location: (string-utf8 100),
     quality-score: uint,       ;; 0-100 score
     sustainability-score: uint, ;; 0-100 score
+    ethical-score: uint,       ;; 0-100 score
+    notes: (string-utf8 500),
+    evidence-uri: (string-utf8 256),
+    verification-signature: (buff 65)
+  }
+)
+
+;; Product checkpoint index mapping
+(define-map product-checkpoints
+  { product-id: uint, index: uint }
+  { checkpoint-id: uint }
+)
+
+;; Product certificate index mapping
+(define-map product-certificates
+  { product-id: uint, index: uint }
+  { certificate-id: uint }
+)
+
+;; Consumer verification lookup
+(define-map consumer-verifications
+  { product-id: uint, verifier: principal }
+  {
+    timestamp: uint,
+    verification-method: (string-utf8 50),
+    rating: (optional uint),
+    feedback: (optional (string-utf8 500))
+  }
+)
+
