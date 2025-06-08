@@ -92,18 +92,6 @@
     is-revoked: bool,
     issued-at: uint
   }
-
-  {
-    cert-type-id: uint,
-    issuer-entity-id: uint,
-    recipient-entity-id: (optional uint),
-    product-id: (optional uint),
-    valid-from: uint,
-    valid-until: uint,
-    verification-uri: (string-utf8 256),
-    is-active: bool,
-    created-at: uint
-  }
 )
 
 ;; Custody Transfer History
@@ -159,3 +147,367 @@
   }
 )
 
+;; Initialize contract with basic entity types, product states, and certification types
+(begin
+  ;; Entity Types
+  (map-set entity-types { type-id: u1 } { type-name: u"Producer" })
+  (map-set entity-types { type-id: u2 } { type-name: u"Manufacturer" })
+  (map-set entity-types { type-id: u3 } { type-name: u"Distributor" })
+  (map-set entity-types { type-id: u4 } { type-name: u"Retailer" })
+  (map-set entity-types { type-id: u5 } { type-name: u"Certification Authority" })
+  
+  ;; Product States
+  (map-set product-states { state-id: u1 } { state-name: u"Origin Certified" })
+  (map-set product-states { state-id: u2 } { state-name: u"In Production" })
+  (map-set product-states { state-id: u3 } { state-name: u"Quality Control" })
+  (map-set product-states { state-id: u4 } { state-name: u"In Transit" })
+  (map-set product-states { state-id: u5 } { state-name: u"At Distributor" })
+  (map-set product-states { state-id: u6 } { state-name: u"At Retailer" })
+  (map-set product-states { state-id: u7 } { state-name: u"Sold" })
+  
+  ;; Certification Types
+  (map-set certification-types { cert-type-id: u1 } { cert-type-name: u"Organic" })
+  (map-set certification-types { cert-type-id: u2 } { cert-type-name: u"Fair Trade" })
+  (map-set certification-types { cert-type-id: u3 } { cert-type-name: u"Sustainably Sourced" })
+  (map-set certification-types { cert-type-id: u4 } { cert-type-name: u"Non-GMO" })
+  (map-set certification-types { cert-type-id: u5 } { cert-type-name: u"Carbon Neutral" })
+)
+
+;; Helper function to check if caller is authorized as an entity
+(define-read-only (is-entity-principal (entity-id uint))
+  (match (map-get? entity-principals { principal: tx-sender })
+    entity-info (is-eq (get entity-id entity-info) entity-id)
+    false
+  )
+)
+
+;; Helper function to get entity ID from principal
+(define-read-only (get-entity-id-by-principal (entity-principal principal))
+  (match (map-get? entity-principals { principal: entity-principal })
+    entity-info (ok (get entity-id entity-info))
+    (err ERR-ENTITY-NOT-FOUND)
+
+  )
+)
+
+;; Read-only functions
+(define-read-only (get-product-details (product-id uint))
+  (map-get? products { product-id: product-id })
+)
+
+(define-read-only (get-entity-details (entity-id uint))
+  (map-get? entities { entity-id: entity-id })
+)
+
+(define-read-only (get-certificate-details (certificate-id uint))
+  (map-get? certificates { certificate-id: certificate-id })
+)
+
+(define-read-only (get-checkpoint-details (checkpoint-id uint))
+  (map-get? checkpoints { checkpoint-id: checkpoint-id })
+)
+
+(define-read-only (get-product-certification-status (product-id uint))
+  (match (map-get? products { product-id: product-id })
+    product (ok {
+      is-verified: (get is-verified product),
+      origin-certification: (get-certificate-details (get origin-certification-id product)),
+      sustainability-score: (get sustainability-score product)
+    })
+    (err ERR-PRODUCT-NOT-FOUND)
+  )
+)
+
+(define-read-only (get-product-journey (product-id uint))
+  ;; In a real implementation, would return a comprehensive journey history
+  ;; including all checkpoints and custody transfers
+  (match (map-get? products { product-id: product-id })
+    product (ok {
+      product-id: product-id,
+      current-state: (get current-state product),
+      current-custodian: (get current-custodian product)
+    })
+    (err ERR-PRODUCT-NOT-FOUND)
+  )
+)
+
+;; Public functions for contract administration
+(define-public (register-entity 
+  (name (string-utf8 100))
+  (entity-type uint)
+  (location (string-utf8 100))
+  (contact-info (string-utf8 100))
+  (entity-principal principal)
+)
+  (let
+    (
+      (entity-id (var-get next-entity-id))
+    )
+    
+    ;; Only contract owner or already registered entity of certification type can register new entities
+    (asserts! 
+      (or 
+        (is-eq tx-sender (var-get contract-owner))
+        (and 
+          (is-some (map-get? entity-principals { principal: tx-sender }))
+          (is-eq 
+            (get entity-type 
+              (unwrap! 
+                (get-entity-details 
+                  (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND))
+                )
+                (err ERR-ENTITY-NOT-FOUND)
+              )
+            )
+            u5 ;; Certification Authority type
+          )
+        )
+      )
+      (err ERR-NOT-AUTHORIZED)
+    )
+    
+    ;; Check if principal is already registered
+    (asserts! (is-none (map-get? entity-principals { principal: entity-principal })) (err ERR-ALREADY-EXISTS))
+ ;; Register entity
+    (map-set entities
+      { entity-id: entity-id }
+      {
+        name: name,
+        entity-type: entity-type,
+        location: (get location entity-type),
+        contact-info: contact-info,
+        verification-status: false,
+        sustainability-score: u0,
+        created-at: block-height
+      }
+    )
+    
+    ;; Associate principal with entity
+    (map-set entity-principals
+      { principal: entity-principal }
+      { entity-id: entity-id }
+    )
+    
+    ;; Increment entity ID
+    (var-set next-entity-id (+ entity-id u1))
+    
+    (ok entity-id)
+  )
+)
+
+(define-public (verify-entity (entity-id uint))
+  (let (
+    (entity (unwrap! (get-entity-details entity-id) (err ERR-ENTITY-NOT-FOUND)))
+  )
+    ;; Only contract owner or certification authority can verify entities
+    (asserts!
+      (or
+        (is-eq tx-sender (var-get contract-owner))
+        (and
+          (is-some (map-get? entity-principals { principal: tx-sender }))
+          (is-eq
+            (get entity-type
+              (unwrap!
+                (get-entity-details
+                  (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND))
+                )
+                (err ERR-ENTITY-NOT-FOUND)
+              )
+            )
+            u5 ;; Certification Authority type
+          )
+        )
+      )
+      (err ERR-NOT-AUTHORIZED)
+    )
+    ;; Set verification-status to true
+    (map-set entities
+      { entity-id: entity-id }
+      {
+        name: (get name entity),
+        entity-type: (get entity-type entity),
+        location: (get location entity),
+        contact-info: (get contact-info entity),
+        verification-status: true,
+        sustainability-score: (get sustainability-score entity),
+        created-at: (get created-at entity)
+      }
+    )
+    (ok true)
+  )
+)
+
+;; Product registration and certification
+(define-public (register-product
+  (name (string-utf8 100))
+  (description (string-utf8 500))
+  (product-uri (string-utf8 256))
+)
+  (let
+    (
+      (product-id (var-get next-product-id))
+      (entity-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
+      (entity (unwrap! (get-entity-details entity-id) (err ERR-ENTITY-NOT-FOUND)))
+    )
+    
+    ;; Check if entity is verified
+    (asserts! (get verification-status entity) (err ERR-NOT-AUTHORIZED))
+    
+    ;; Register product at origin (no certification yet)
+    (map-set products
+      { product-id: product-id }
+      {
+        name: name,
+        description: description,
+        current-state: u1, ;; Origin Certified state
+        current-custodian: entity-id,
+        origin-entity-id: entity-id,
+        origin-certification-id: u0, ;; No certification yet
+        origin-timestamp: block-height,
+        final-destination-entity-id: none,
+        final-delivery-timestamp: none,
+        is-verified: false,
+        sustainability-score: u0,
+        product-uri: product-uri,
+        created-at: block-height
+      }
+    )
+    
+    ;; Increment product ID
+    (var-set next-product-id (+ product-id u1))
+    
+    (ok product-id)
+  )
+)
+
+(define-public (issue-certificate
+  (cert-type-id uint)
+  (recipient-entity-id (optional uint))
+  (product-id (optional uint))
+  (valid-until uint)
+  (verification-uri (string-utf8 256))
+)
+  (let
+    (
+      (certificate-id (var-get next-certificate-id))
+      (issuer-entity-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
+      (issuer-entity (unwrap! (get-entity-details issuer-entity-id) (err ERR-ENTITY-NOT-FOUND)))
+    )
+    
+    ;; Check if issuer is a certification authority
+    (asserts! (is-eq (get entity-type issuer-entity) u5) (err ERR-NOT-AUTHORIZED))
+    
+    ;; Check if entity is verified
+    (asserts! (get verification-status issuer-entity) (err ERR-NOT-AUTHORIZED))
+    
+    ;; If certifying a product, check if it exists
+    (if (is-some product-id)
+      (asserts! (is-some (get-product-details (unwrap! product-id (err ERR-PRODUCT-NOT-FOUND)))) (err ERR-PRODUCT-NOT-FOUND))
+      true
+    )
+    
+    ;; If certifying an entity, check if it exists
+    (if (is-some recipient-entity-id)
+      (asserts! (is-some (get-entity-details (unwrap! recipient-entity-id (err ERR-ENTITY-NOT-FOUND)))) (err ERR-ENTITY-NOT-FOUND))
+      true
+    )
+    
+        ;; Create certificate
+        (map-set certificates
+          { certificate-id: certificate-id }
+          {
+            cert-type-id: cert-type-id,
+            issued-to-entity-id: (default-to u0 recipient-entity-id),
+            issued-to-product-id: product-id,
+            issuer-entity-id: issuer-entity-id,
+            valid-from: block-height,
+            valid-until: valid-until,
+            certificate-uri: verification-uri,
+            is-revoked: false,
+            issued-at: block-height
+          }
+        )
+    
+        ;; If certifying a product, update product with certification
+        (if (is-some product-id)
+          (let (
+            (product-id-value (unwrap! product-id (err ERR-PRODUCT-NOT-FOUND)))
+            (product (unwrap! (get-product-details (unwrap! product-id (err ERR-PRODUCT-NOT-FOUND))) (err ERR-PRODUCT-NOT-FOUND)))
+          )
+            (map-set products
+              { product-id: product-id-value }
+              {
+                name: (get name product),
+                description: (get description product),
+                current-state: (get current-state product),
+                current-custodian: (get current-custodian product),
+                origin-entity-id: (get origin-entity-id product),
+                origin-certification-id: certificate-id,
+                origin-timestamp: (get origin-timestamp product),
+                final-destination-entity-id: (get final-destination-entity-id product),
+                final-delivery-timestamp: (get final-delivery-timestamp product),
+                is-verified: true,
+                sustainability-score: (get sustainability-score product),
+                product-uri: (get product-uri product),
+                created-at: (get created-at product)
+              }
+            )
+          )
+          true
+        )
+    
+        ;; Increment certificate ID
+        (var-set next-certificate-id (+ certificate-id u1))
+    
+        (ok certificate-id)
+      )
+    )
+     )
+          ;; Update product certificate index
+          (map-set product-certificates
+            { product-id: product-id-value, index: u0 }
+            { certificate-id: certificate-id }
+          )
+        )
+        true
+      )
+      true
+    )
+    
+    ;; Increment certificate ID
+    (var-set next-certificate-id (+ certificate-id u1))
+    
+    (ok certificate-id)
+  )
+)
+
+;; Supply chain operations
+(define-public (transfer-custody
+  (product-id uint)
+  (to-entity-id uint)
+  (notes (string-utf8 500))
+  (verification-signature (buff 65))
+)
+  (let
+    (
+      (product (unwrap! (get-product-details product-id) (err ERR-PRODUCT-NOT-FOUND)))
+      (from-entity-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
+      (to-entity (unwrap! (get-entity-details to-entity-id) (err ERR-ENTITY-NOT-FOUND)))
+      (transfer-index-key { product-id: product-id, transfer-index: u0 }) ;; Use a counter in real implementation
+    )
+    
+    ;; Check if caller is current custodian
+    (asserts! (is-eq from-entity-id (get current-custodian product)) (err ERR-NOT-CURRENT-CUSTODIAN))
+    
+    ;; Check if receiving entity is verified
+    (asserts! (get verification-status to-entity) (err ERR-INVALID-STATE-TRANSITION))
+    
+    ;; Record custody transfer
+    (map-set custody-transfers
+      transfer-index-key
+      {
+        from-entity-id: from-entity-id,
+        to-entity-id: to-entity-id,
+        transfer-timestamp: block-height,
+        notes: notes,
+        verification-signature: verification-signature
