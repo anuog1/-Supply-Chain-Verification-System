@@ -615,3 +615,106 @@
     
     ;; Increment checkpoint ID
     (var-set next-checkpoint-id (+ checkpoint-id u1))
+    
+      
+    (ok checkpoint-id)
+  )
+)
+
+(define-public (mark-product-sold
+  (product-id uint)
+)
+  (let
+    (
+      (product (unwrap! (get-product-details product-id) (err ERR-PRODUCT-NOT-FOUND)))
+      (entity-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
+    )
+    
+    ;; Check if caller is current custodian
+    (asserts! (is-eq entity-id (get current-custodian product)) (err ERR-NOT-CURRENT-CUSTODIAN))
+    
+    ;; Check if current custodian is a retailer
+    (match (get-entity-details entity-id)
+      entity (asserts! (is-eq (get entity-type entity) u4) (err ERR-INVALID-STATE-TRANSITION))
+      (err ERR-ENTITY-NOT-FOUND)
+    )
+    
+    ;; Update product state to sold
+    (map-set products
+      { product-id: product-id }
+      (merge product { 
+        current-state: u7, ;; Sold state
+        final-destination-entity-id: (some entity-id),
+        final-delivery-timestamp: (some block-height)
+      })
+    )
+    
+    (ok true)
+  )
+)
+
+;; Consumer verification
+(define-public (verify-product-as-consumer
+  (product-id uint)
+  (verification-method (string-utf8 50))
+  (rating (optional uint))
+  (feedback (optional (string-utf8 500)))
+)
+  (let
+    (
+      (product (unwrap! (get-product-details product-id) (err ERR-PRODUCT-NOT-FOUND)))
+    )
+    
+    ;; Check if product exists and is verified
+    (asserts! (get is-verified product) (err ERR-INVALID-CERTIFICATION))
+   
+    ;; Validate rating if provided (1-5 scale)
+    (match rating
+      rating-value (asserts! (and (>= rating-value u1) (<= rating-value u5)) (err ERR-INVALID-RATING))
+      true
+    )
+    
+    ;; Record consumer verification
+    (map-set consumer-verifications
+      { product-id: product-id, verifier: tx-sender }
+      {
+        timestamp: block-height,
+        verification-method: verification-method,
+        rating: rating,
+        feedback: feedback
+      }
+    )
+    
+    (ok true)
+  )
+)
+(define-public (revoke-certificate (certificate-id uint))
+  (let (
+    (certificate (unwrap! (get-certificate-details certificate-id) (err ERR-CERTIFICATE-NOT-FOUND)))
+    (caller-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
+  )
+    (asserts! (is-eq (get issuer-entity-id certificate) caller-id) (err ERR-NOT-AUTHORIZED))
+    
+    ;; Mark as inactive
+    (map-set certificates
+      { certificate-id: certificate-id }
+      (merge certificate { is-active: false })
+    )
+    (ok true)
+  )
+)
+(define-public (get-entity-type (entity-id uint))
+  (let (
+    (entity (unwrap! (get-entity-details entity-id) (err ERR-ENTITY-NOT-FOUND)))
+  )
+    (ok (get entity-type entity))
+  )
+)
+(define-public (get-product-sustainability-score (product-id uint))
+  (let (
+    (product (unwrap! (get-product-details product-id) (err ERR-PRODUCT-NOT-FOUND)))
+  )
+    ;; Return the sustainability score
+    (ok (get sustainability-score product))
+  )
+)
