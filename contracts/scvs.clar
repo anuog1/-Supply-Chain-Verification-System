@@ -564,3 +564,54 @@
       (entity-id (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND)))
       (checkpoint-index u0) ;; Use a counter in real implementation
     )
+  ;; Check if caller is current custodian or a certification authority
+    (asserts! 
+      (or 
+        (is-eq entity-id (get current-custodian product))
+        (match (get-entity-details entity-id)
+          entity (is-eq (get entity-type entity) u5) ;; Is certification authority
+          false
+        )
+      ) 
+      (err ERR-NOT-AUTHORIZED)
+    )
+     ;; Validate scores (0-100)
+    (asserts! (and (<= quality-score u100) (<= sustainability-score u100) (<= ethical-score u100)) (err ERR-INVALID-RATING))
+    
+    ;; Record checkpoint
+    (map-set checkpoints
+      { checkpoint-id: checkpoint-id }
+      {
+        product-id: product-id,
+        inspector-entity-id: entity-id,
+        checkpoint-type: checkpoint-type,
+        timestamp: block-height,
+        location: location,
+        quality-score: quality-score,
+        sustainability-score: sustainability-score,
+        ethical-score: ethical-score,
+        notes: notes,
+        evidence-uri: evidence-uri,
+        verification-signature: verification-signature
+      }
+    )
+    
+    ;; Record checkpoint in product's checkpoint index
+    (map-set product-checkpoints
+      { product-id: product-id, index: checkpoint-index }
+      { checkpoint-id: checkpoint-id }
+    )
+    
+    ;; Update product state if this is a quality control checkpoint
+    (when (is-eq checkpoint-type "Quality Control")
+      (map-set products
+        { product-id: product-id }
+        (merge product { 
+          current-state: u3, ;; Quality Control state
+          sustainability-score: sustainability-score ;; Update with latest score
+        })
+      )
+    )
+    
+    ;; Increment checkpoint ID
+    (var-set next-checkpoint-id (+ checkpoint-id u1))
