@@ -25,3 +25,70 @@
   { type-id: uint }
   { type-name: (string-utf8 50) }
 )
+
+;; Product States
+(define-map product-states
+  { state-id: uint }
+  { state-name: (string-utf8 50) }
+)
+
+;; Supply Chain Entities (Companies/Organizations)
+(define-map entities
+  { entity-id: uint }
+  {
+    name: (string-utf8 100),
+    entity-type: uint,
+    location: (string-utf8 100),
+    contact-info: (string-utf8 100),
+    verification-status: bool,
+    sustainability-score: uint,  ;; 0-100 scale
+    created-at: uint
+  }
+)
+
+;; Entity authentication mapping
+(define-map entity-principals
+  { principal: principal }
+  { entity-id: uint }
+)
+
+;; Products being tracked
+(define-map products
+  { product-id: uint }
+  {
+    name: (string-utf8 100),
+    description: (string-utf8 500),
+    current-state: uint,
+    current-custodian: uint,  ;; entity-id of current custodian
+    origin-entity-id: uint,
+    origin-certification-id: uint,
+    origin-timestamp: uint,
+    final-destination-entity-id: (optional uint),
+    final-delivery-timestamp: (optional uint),
+    is-verified: bool,
+    sustainability-score: uint,   ;; 0-100 calculated from all checkpoints
+    product-uri: (string-utf8 256),  ;; Link to off-chain data
+    created-at: uint
+  }
+)
+
+;; Certification types (Organic, Fair Trade, etc.)
+(define-map certification-types
+  { cert-type-id: uint }
+  { cert-type-name: (string-utf8 100) }
+)
+
+;; Certificates issued to entities or products
+(define-map certificates
+  { certificate-id: uint }
+  {
+    cert-type-id: uint,
+    issued-to-entity-id: uint,
+    issued-to-product-id: (optional uint),
+    issuer-entity-id: uint,
+    valid-from: uint,
+    valid-until: uint,
+    certificate-uri: (string-utf8 256),
+    is-revoked: bool,
+    issued-at: uint
+  }
