@@ -92,3 +92,40 @@
     is-revoked: bool,
     issued-at: uint
   }
+
+  {
+    cert-type-id: uint,
+    issuer-entity-id: uint,
+    recipient-entity-id: (optional uint),
+    product-id: (optional uint),
+    valid-from: uint,
+    valid-until: uint,
+    verification-uri: (string-utf8 256),
+    is-active: bool,
+    created-at: uint
+  }
+)
+
+;; Custody Transfer History
+(define-map custody-transfers
+  { product-id: uint, transfer-index: uint }
+  {
+    from-entity-id: uint,
+    to-entity-id: uint,
+    transfer-timestamp: uint,
+    notes: (string-utf8 500),
+    verification-signature: (buff 65)
+  }
+)
+
+;; Quality Assurance Checkpoints
+(define-map checkpoints
+  { checkpoint-id: uint }
+  {
+    product-id: uint,
+    inspector-entity-id: uint,
+    checkpoint-type: (string-utf8 50),
+    timestamp: uint,
+    location: (string-utf8 100),
+    quality-score: uint,       ;; 0-100 score
+    sustainability-score: uint, ;; 0-100 score
