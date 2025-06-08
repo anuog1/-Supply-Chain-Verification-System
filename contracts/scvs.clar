@@ -226,3 +226,77 @@
       product-id: product-id,
       current-state: (get current-state product),
       current-custodian: (get current-custodian product)
+    })
+    (err ERR-PRODUCT-NOT-FOUND)
+  )
+)
+
+;; Public functions for contract administration
+(define-public (register-entity 
+  (name (string-utf8 100))
+  (entity-type uint)
+  (location (string-utf8 100))
+  (contact-info (string-utf8 100))
+  (entity-principal principal)
+)
+  (let
+    (
+      (entity-id (var-get next-entity-id))
+    )
+    
+    ;; Only contract owner or already registered entity of certification type can register new entities
+    (asserts! 
+      (or 
+        (is-eq tx-sender (var-get contract-owner))
+        (and 
+          (is-some (map-get? entity-principals { principal: tx-sender }))
+          (is-eq 
+            (get entity-type 
+              (unwrap! 
+                (get-entity-details 
+                  (unwrap! (get-entity-id-by-principal tx-sender) (err ERR-ENTITY-NOT-FOUND))
+                )
+                (err ERR-ENTITY-NOT-FOUND)
+              )
+            )
+            u5 ;; Certification Authority type
+          )
+        )
+      )
+      (err ERR-NOT-AUTHORIZED)
+    )
+    
+    ;; Check if principal is already registered
+    (asserts! (is-none (map-get? entity-principals { principal: entity-principal })) (err ERR-ALREADY-EXISTS))
+ ;; Register entity
+    (map-set entities
+      { entity-id: entity-id }
+      {
+        name: name,
+        entity-type: entity-type,
+        location: location,
+        contact-info: contact-info,
+        verification-status: false,
+        sustainability-score: u0,
+        created-at: block-height
+      }
+    )
+    
+    ;; Associate principal with entity
+    (map-set entity-principals
+      { principal: entity-principal }
+      { entity-id: entity-id }
+    )
+    
+    ;; Increment entity ID
+    (var-set next-entity-id (+ entity-id u1))
+    
+    (ok entity-id)
+  )
+)
+
+(define-public (verify-entity (entity-id uint))
+  (let (
+      (entity (unwrap! (get-entity-details entity-id) (err ERR-ENTITY-NOT-FOUND)))
+    )
+    ;; Only contract owner or certification authority can verify entities
